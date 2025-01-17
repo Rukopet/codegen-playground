@@ -1,0 +1,69 @@
+name: Generate Client SDKs
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'ptx_schemas/**'
+      - 'main.py'
+  workflow_dispatch:
+
+jobs:
+  generate-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install fastapi pydantic uvicorn
+          pip install -e .
+          
+      - name: Generate OpenAPI spec
+        run: python generate_openapi.py
+        
+      - name: Set up OpenAPI Generator
+        uses: OpenAPITools/openapi-generator-cli@v2.5.2
+        with:
+          version: 6.6.0
+          
+      - name: Generate Python Client
+        run: |
+          openapi-generator-cli generate \
+            -i openapi.json \
+            -g python \
+            -o ./generated/python-client \
+            --additional-properties=packageName=ptx_client
+            
+      - name: Generate TypeScript Client
+        run: |
+          openapi-generator-cli generate \
+            -i openapi.json \
+            -g typescript-fetch \
+            -o ./generated/typescript-client
+            
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: sdk-v${{ github.run_number }}
+          release_name: SDK Release v${{ github.run_number }}
+          draft: false
+          prerelease: false
+          
+      - name: Upload SDK Artifacts
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./generated
+          asset_name: sdk-v${{ github.run_number }}.zip
+          asset_content_type: application/zip 
